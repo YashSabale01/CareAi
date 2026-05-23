@@ -1,0 +1,15 @@
+node_modules/
+.env
+*.log
+logs/
+dist/
+build/
+__pycache__/
+*.pyc
+*.pyo
+.env.local
+reports/
+ml-service/models/saved/*.joblib
+ml-service/data/*.csv
+.DS_Store
+coverage/

@@ -1,0 +1,441 @@
+openapi: 3.0.0
+info:
+  title: CareAI API
+  version: 1.0.0
+  description: AI-powered healthcare monitoring platform API
+servers:
+  - url: http://localhost:5000/api
+    description: Local development
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+    User:
+      type: object
+      properties:
+        _id: { type: string }
+        name: { type: string }
+        email: { type: string }
+        role: { type: string, enum: [doctor, patient, caretaker, admin] }
+    Patient:
+      type: object
+      properties:
+        _id: { type: string }
+        patientId: { type: string }
+        age: { type: integer }
+        gender: { type: string }
+        bloodGroup: { type: string }
+    VitalRecord:
+      type: object
+      properties:
+        heartRate: { type: number }
+        spo2: { type: number }
+        systolicBP: { type: number }
+        diastolicBP: { type: number }
+        temperature: { type: number }
+        fallDetection: { type: boolean }
+    Prediction:
+      type: object
+      properties:
+        predictedDisease: { type: string }
+        riskLevel: { type: string, enum: [Low, Medium, High] }
+        confidence: { type: number }
+
+security:
+  - bearerAuth: []
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name: { type: string }
+                email: { type: string }
+                password: { type: string, minLength: 8 }
+                role: { type: string, enum: [doctor, patient, caretaker, admin] }
+      responses:
+        '201':
+          description: User registered
+        '409':
+          description: Email already exists
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        '200':
+          description: Login successful, returns JWT token
+        '401':
+          description: Invalid credentials
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      responses:
+        '200':
+          description: Current user profile
+
+  /auth/change-password:
+    put:
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string }
+                newPassword: { type: string }
+      responses:
+        '200':
+          description: Password updated
+
+  /patients:
+    get:
+      tags: [Patients]
+      responses:
+        '200':
+          description: List of patients
+    post:
+      tags: [Patients]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Patient'
+      responses:
+        '201':
+          description: Patient created
+
+  /patients/{id}:
+    get:
+      tags: [Patients]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Patient details
+    put:
+      tags: [Patients]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Patient updated
+    delete:
+      tags: [Patients]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Patient deactivated
+
+  /vitals:
+    post:
+      tags: [Vitals]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VitalRecord'
+      responses:
+        '201':
+          description: Vital record created
+
+  /vitals/patient/{patientId}:
+    get:
+      tags: [Vitals]
+      parameters:
+        - in: path
+          name: patientId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Patient vital records
+
+  /vitals/{id}:
+    get:
+      tags: [Vitals]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Vital record
+
+  /predictions/predict:
+    post:
+      tags: [Predictions]
+      summary: Submit vitals and get AI disease prediction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [patientId, heartRate, spo2, systolicBP, diastolicBP, temperature]
+              properties:
+                patientId: { type: string }
+                heartRate: { type: number, minimum: 30, maximum: 220 }
+                spo2: { type: number, minimum: 70, maximum: 100 }
+                systolicBP: { type: number, minimum: 70, maximum: 250 }
+                diastolicBP: { type: number, minimum: 40, maximum: 150 }
+                temperature: { type: number, minimum: 34, maximum: 42 }
+                fallDetection: { type: boolean }
+                notes: { type: string }
+      responses:
+        '201':
+          description: Prediction result with care plan
+        '400':
+          description: Validation error
+        '503':
+          description: ML service unavailable
+
+  /predictions/patient/{patientId}:
+    get:
+      tags: [Predictions]
+      parameters:
+        - in: path
+          name: patientId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Patient predictions
+
+  /predictions/{id}:
+    get:
+      tags: [Predictions]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Prediction details
+
+  /alerts:
+    get:
+      tags: [Alerts]
+      responses:
+        '200':
+          description: List of alerts
+
+  /alerts/patient/{patientId}:
+    get:
+      tags: [Alerts]
+      parameters:
+        - in: path
+          name: patientId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Patient alerts
+
+  /alerts/{id}/acknowledge:
+    put:
+      tags: [Alerts]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Alert acknowledged
+
+  /alerts/{id}/resolve:
+    put:
+      tags: [Alerts]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Alert resolved
+
+  /careplans/patient/{patientId}:
+    get:
+      tags: [CarePlans]
+      parameters:
+        - in: path
+          name: patientId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Patient care plans
+
+  /careplans/{id}:
+    get:
+      tags: [CarePlans]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Care plan details
+    put:
+      tags: [CarePlans]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Care plan updated
+
+  /reports/generate:
+    post:
+      tags: [Reports]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [patientId]
+              properties:
+                patientId: { type: string }
+      responses:
+        '201':
+          description: Report generated
+
+  /reports/patient/{patientId}:
+    get:
+      tags: [Reports]
+      parameters:
+        - in: path
+          name: patientId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Patient reports
+
+  /reports/{reportId}/download:
+    get:
+      tags: [Reports]
+      parameters:
+        - in: path
+          name: reportId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: PDF report file
+
+  /analytics/overview:
+    get:
+      tags: [Analytics]
+      responses:
+        '200':
+          description: System overview KPIs
+
+  /analytics/risk-distribution:
+    get:
+      tags: [Analytics]
+      responses:
+        '200':
+          description: Risk level distribution
+
+  /analytics/disease-trends:
+    get:
+      tags: [Analytics]
+      responses:
+        '200':
+          description: Disease prediction trends
+
+  /analytics/alert-stats:
+    get:
+      tags: [Analytics]
+      responses:
+        '200':
+          description: Alert statistics
+
+  /analytics/patient/{patientId}:
+    get:
+      tags: [Analytics]
+      parameters:
+        - in: path
+          name: patientId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Patient-specific analytics
+
+  /chatbot/message:
+    post:
+      tags: [Chatbot]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message: { type: string }
+                patientId: { type: string }
+      responses:
+        '200':
+          description: Chatbot response
+
+  /health:
+    get:
+      tags: [System]
+      security: []
+      responses:
+        '200':
+          description: Health check

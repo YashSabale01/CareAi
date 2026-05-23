@@ -1,0 +1,125 @@
+{
+  "champion": "random_forest",
+  "random_forest": {
+    "accuracy": 0.2027,
+    "f1_weighted": 0.20220026739055977,
+    "auc": 0.5003954952370606,
+    "report": {
+      "Arrhythmia": {
+        "precision": 0.19353155972874284,
+        "recall": 0.18652589240824535,
+        "f1-score": 0.18996415770609318,
+        "support": 1989.0
+      },
+      "Asthma": {
+        "precision": 0.21102909248805907,
+        "recall": 0.2415506958250497,
+        "f1-score": 0.22526071842410197,
+        "support": 2012.0
+      },
+      "Diabetes Mellitus": {
+        "precision": 0.20353114271701814,
+        "recall": 0.2064676616915423,
+        "f1-score": 0.2049888861447271,
+        "support": 2010.0
+      },
+      "Hypertension": {
+        "precision": 0.20102827763496145,
+        "recall": 0.19687814702920442,
+        "f1-score": 0.19893156957517172,
+        "support": 1986.0
+      },
+      "Normal": {
+        "precision": 0.2026726057906459,
+        "recall": 0.18172740888667,
+        "f1-score": 0.19162937615161885,
+        "support": 2003.0
+      },
+      "accuracy": 0.2027,
+      "macro avg": {
+        "precision": 0.20235853567188547,
+        "recall": 0.20262996116814236,
+        "f1-score": 0.20215494160034253,
+        "support": 10000.0
+      },
+      "weighted avg": {
+        "precision": 0.20238177920293482,
+        "recall": 0.2027,
+        "f1-score": 0.20220026739055977,
+        "support": 10000.0
+      }
+    }
+  },
+  "xgboost": {
+    "accuracy": 0.2022,
+    "f1_weighted": 0.20189391567670614,
+    "auc": 0.5004918367753345,
+    "report": {
+      "Arrhythmia": {
+        "precision": 0.19951807228915663,
+        "recall": 0.2081447963800905,
+        "f1-score": 0.20374015748031496,
+        "support": 1989.0
+      },
+      "Asthma": {
+        "precision": 0.20585625554569653,
+        "recall": 0.23061630218687873,
+        "f1-score": 0.2175339896858884,
+        "support": 2012.0
+      },
+      "Diabetes Mellitus": {
+        "precision": 0.19457889641819942,
+        "recall": 0.2,
+        "f1-score": 0.197252208047105,
+        "support": 2010.0
+      },
+      "Hypertension": {
+        "precision": 0.20172135556750942,
+        "recall": 0.18882175226586104,
+        "f1-score": 0.19505851755526657,
+        "support": 1986.0
+      },
+      "Normal": {
+        "precision": 0.21019473081328752,
+        "recall": 0.1832251622566151,
+        "f1-score": 0.19578554281141639,
+        "support": 2003.0
+      },
+      "accuracy": 0.2022,
+      "macro avg": {
+        "precision": 0.2023738621267699,
+        "recall": 0.20216160261788904,
+        "f1-score": 0.20187408311599828,
+        "support": 10000.0
+      },
+      "weighted avg": {
+        "precision": 0.20237664717177434,
+        "recall": 0.2022,
+        "f1-score": 0.20189391567670614,
+        "support": 10000.0
+      }
+    }
+  },
+  "classes": [
+    "Arrhythmia",
+    "Asthma",
+    "Diabetes Mellitus",
+    "Hypertension",
+    "Normal"
+  ],
+  "features": [
+    "heart_rate",
+    "spo2",
+    "systolic_bp",
+    "diastolic_bp",
+    "temperature",
+    "fall_detection",
+    "pulse_pressure",
+    "map",
+    "hr_spo2_ratio",
+    "temp_deviation",
+    "hypertension_flag",
+    "tachycardia_flag",
+    "hypoxia_flag"
+  ]
+}
