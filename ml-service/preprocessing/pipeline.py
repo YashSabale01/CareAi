@@ -1,14 +1,16 @@
 """
-Full preprocessing pipeline for CareAI ML models.
+Preprocessing pipeline for CareAI clinical risk prediction.
 
-Features:
-  - Heart Rate (bpm), SpO2 Level (%), Systolic BP, Diastolic BP,
-    Body Temperature (C), Fall Detection (binary)
-  + Engineered: pulse_pressure, map, hr_spo2_ratio, temp_deviation,
-    hypertension_flag, tachycardia_flag, hypoxia_flag
+Input vitals (from caretaker):
+  Age, Heart Rate (bpm), Systolic BP, Diastolic BP, SpO2 (%),
+  Glucose Level (mg/dL), Temperature (°F), Cholesterol (mg/dL), BMI
 
-Target: Predicted Disease (5-class)
-  Arrhythmia=0, Asthma=1, Diabetes Mellitus=2, Hypertension=3, Normal=4
+Engineered features:
+  pulse_pressure, map, hr_spo2_ratio, temp_deviation_f,
+  hypertension_flag, tachycardia_flag, hypoxia_flag,
+  high_glucose_flag, high_cholesterol_flag, obese_flag
+
+Target: Risk Level — Low=0, Medium=1, High=2
 """
 
 import pandas as pd
@@ -19,51 +21,53 @@ import joblib
 import os
 
 SAVED_DIR = os.path.join(os.path.dirname(__file__), '../models/saved')
-DATA_PATH = os.path.join(os.path.dirname(__file__), '../data/patients_data_with_alerts.csv')
-
-# Normalized column names used internally
-TEMP_COL = 'Body Temperature (C)'
+DATA_PATH = os.path.join(os.path.dirname(__file__), '../data/clinical_risk_dataset_50k.csv')
 
 FEATURE_COLS = [
-    'Heart Rate (bpm)',
-    'SpO2 Level (%)',
-    'Systolic Blood Pressure (mmHg)',
-    'Diastolic Blood Pressure (mmHg)',
-    TEMP_COL,
-    'Fall Detection',
+    'Age',
+    'Heart Rate',
+    'Systolic BP',
+    'Diastolic BP',
+    'SpO2',
+    'Glucose Level',
+    'Temperature',
+    'Cholesterol',
+    'BMI',
     'pulse_pressure',
     'map',
     'hr_spo2_ratio',
-    'temp_deviation',
+    'temp_deviation_f',
     'hypertension_flag',
     'tachycardia_flag',
     'hypoxia_flag',
+    'high_glucose_flag',
+    'high_cholesterol_flag',
+    'obese_flag',
 ]
-TARGET_COL = 'Predicted Disease'
+TARGET_COL = 'Risk Level'
 
 
-def _normalize_columns(df):
-    """Rename temperature column to normalized name regardless of degree symbol encoding."""
-    rename_map = {}
-    for col in df.columns:
-        if 'Body Temperature' in col:
-            rename_map[col] = TEMP_COL
-    if rename_map:
-        df = df.rename(columns=rename_map)
+def _engineer(df):
+    df = df.copy()
+    df['pulse_pressure']      = df['Systolic BP'] - df['Diastolic BP']
+    df['map']                 = (df['Systolic BP'] + 2 * df['Diastolic BP']) / 3
+    df['hr_spo2_ratio']       = df['Heart Rate'] / df['SpO2'].replace(0, np.nan)
+    df['temp_deviation_f']    = df['Temperature'] - 98.6
+    df['hypertension_flag']   = (df['Systolic BP'] >= 140).astype(int)
+    df['tachycardia_flag']    = (df['Heart Rate'] > 100).astype(int)
+    df['hypoxia_flag']        = (df['SpO2'] < 95).astype(int)
+    df['high_glucose_flag']   = (df['Glucose Level'] > 126).astype(int)
+    df['high_cholesterol_flag'] = (df['Cholesterol'] > 200).astype(int)
+    df['obese_flag']          = (df['BMI'] >= 30).astype(int)
     return df
 
 
 def load_and_engineer(path=DATA_PATH):
     df = pd.read_csv(path)
-    df = _normalize_columns(df)
-    df['Fall Detection'] = (df['Fall Detection'].str.strip() == 'Yes').astype(int)
-    df['pulse_pressure'] = df['Systolic Blood Pressure (mmHg)'] - df['Diastolic Blood Pressure (mmHg)']
-    df['map'] = (df['Systolic Blood Pressure (mmHg)'] + 2 * df['Diastolic Blood Pressure (mmHg)']) / 3
-    df['hr_spo2_ratio'] = df['Heart Rate (bpm)'] / df['SpO2 Level (%)']
-    df['temp_deviation'] = df[TEMP_COL] - 37.0
-    df['hypertension_flag'] = (df['Systolic Blood Pressure (mmHg)'] >= 140).astype(int)
-    df['tachycardia_flag'] = (df['Heart Rate (bpm)'] > 100).astype(int)
-    df['hypoxia_flag'] = (df['SpO2 Level (%)'] < 90).astype(int)
+    # Drop the combined 'Blood Pressure' string column if present
+    if 'Blood Pressure' in df.columns:
+        df = df.drop(columns=['Blood Pressure'])
+    df = _engineer(df)
     df.dropna(subset=FEATURE_COLS + [TARGET_COL], inplace=True)
     return df
 
@@ -77,34 +81,41 @@ def build_pipeline(df):
     )
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
+    X_test_scaled  = scaler.transform(X_test)
     os.makedirs(SAVED_DIR, exist_ok=True)
     joblib.dump(scaler, os.path.join(SAVED_DIR, 'scaler.joblib'))
-    joblib.dump(le, os.path.join(SAVED_DIR, 'label_encoder.joblib'))
+    joblib.dump(le,     os.path.join(SAVED_DIR, 'label_encoder.joblib'))
     return X_train_scaled, X_test_scaled, y_train, y_test, scaler, le
 
 
 def preprocess_inference(vitals: dict, scaler, le):
     """
-    Takes a dict of raw vitals and returns scaled feature array for prediction.
-    Expected keys: heart_rate, spo2, systolic_bp, diastolic_bp, temperature, fall_detection
+    vitals keys: age, heart_rate, systolic_bp, diastolic_bp, spo2,
+                 glucose_level, temperature, cholesterol, bmi
+    temperature expected in °F
     """
-    fall = 1 if str(vitals.get('fall_detection', 'No')).lower() in ('yes', 'true', '1') else 0
-    hr = float(vitals['heart_rate'])
-    spo2 = float(vitals['spo2'])
-    sys_bp = float(vitals['systolic_bp'])
-    dia_bp = float(vitals['diastolic_bp'])
-    temp = float(vitals['temperature'])
+    age   = float(vitals['age'])
+    hr    = float(vitals['heart_rate'])
+    sys_  = float(vitals['systolic_bp'])
+    dia_  = float(vitals['diastolic_bp'])
+    spo2  = float(vitals['spo2'])
+    gluc  = float(vitals['glucose_level'])
+    temp  = float(vitals['temperature'])
+    chol  = float(vitals['cholesterol'])
+    bmi   = float(vitals['bmi'])
 
     features = [
-        hr, spo2, sys_bp, dia_bp, temp, fall,
-        sys_bp - dia_bp,
-        (sys_bp + 2 * dia_bp) / 3,
-        hr / spo2,
-        temp - 37.0,
-        int(sys_bp >= 140),
+        age, hr, sys_, dia_, spo2, gluc, temp, chol, bmi,
+        sys_ - dia_,
+        (sys_ + 2 * dia_) / 3,
+        hr / spo2 if spo2 != 0 else 0,
+        temp - 98.6,
+        int(sys_ >= 140),
         int(hr > 100),
-        int(spo2 < 90),
+        int(spo2 < 95),
+        int(gluc > 126),
+        int(chol > 200),
+        int(bmi >= 30),
     ]
     arr = np.array(features).reshape(1, -1)
     return scaler.transform(arr)

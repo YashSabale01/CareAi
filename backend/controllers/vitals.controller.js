@@ -1,20 +1,22 @@
-const VitalRecord     = require('../models/VitalRecord');
-const Patient         = require('../models/Patient');
-const Prediction      = require('../models/Prediction');
+const VitalRecord       = require('../models/VitalRecord');
+const Patient           = require('../models/Patient');
+const Prediction        = require('../models/Prediction');
 const { callMLService } = require('../services/ml.service');
 const { dispatchAlert } = require('../services/alert.service');
 const { generateCarePlan } = require('../services/careplan.service');
-const { VITAL_RANGES } = require('../utils/thresholds');
-const logger          = require('../config/logger');
+const { VITAL_RANGES }  = require('../utils/thresholds');
+const logger            = require('../config/logger');
 
 const RANGE_LABELS = {
-  heartRate: 'Heart Rate', spo2: 'SpO2',
-  systolicBP: 'Systolic BP', diastolicBP: 'Diastolic BP', temperature: 'Temperature',
+  age: 'Age', heartRate: 'Heart Rate', systolicBP: 'Systolic BP',
+  diastolicBP: 'Diastolic BP', spo2: 'SpO2', glucoseLevel: 'Glucose Level',
+  temperature: 'Temperature (°F)', cholesterol: 'Cholesterol', bmi: 'BMI',
 };
 
 function validateRanges(vitals) {
   return Object.entries(VITAL_RANGES).reduce((errs, [key, { min, max }]) => {
     const v = vitals[key];
+    if (v === undefined || v === null) { errs.push(`${RANGE_LABELS[key]} is required`); return errs; }
     if (v < min || v > max) errs.push(`${RANGE_LABELS[key]} ${v} outside valid range [${min}–${max}]`);
     return errs;
   }, []);
@@ -31,7 +33,10 @@ async function verifyPatientAccess(user, patient) {
 exports.submitVitals = async (req, res, next) => {
   try {
     const caretakerId = req.user.userId;
-    const { patientId, heartRate, spo2, systolicBP, diastolicBP, temperature, fallDetection, notes } = req.body;
+    const {
+      patientId, age, heartRate, systolicBP, diastolicBP,
+      spo2, glucoseLevel, temperature, cholesterol, bmi, notes,
+    } = req.body;
 
     const patient = await Patient.findById(patientId);
     if (!patient) return res.status(404).json({ error: 'Patient not found' });
@@ -39,22 +44,24 @@ exports.submitVitals = async (req, res, next) => {
       return res.status(403).json({ error: 'You are not assigned to this patient' });
     }
 
-    const rangeErrors = validateRanges({ heartRate, spo2, systolicBP, diastolicBP, temperature });
+    const vitals = { age, heartRate, systolicBP, diastolicBP, spo2, glucoseLevel, temperature, cholesterol, bmi };
+    const rangeErrors = validateRanges(vitals);
     if (rangeErrors.length) return res.status(400).json({ error: 'Vital values out of physiological range', details: rangeErrors });
 
     const vitalRecord = await VitalRecord.create({
       patientId, submittedBy: caretakerId, submitterRole: 'caretaker',
-      heartRate, spo2, systolicBP, diastolicBP, temperature,
-      fallDetection: fallDetection || false, notes: notes || '',
+      age, heartRate, systolicBP, diastolicBP, spo2,
+      glucoseLevel, temperature, cholesterol, bmi,
+      notes: notes || '',
     });
-    logger.info(`VitalRecord ${vitalRecord._id} created for patient ${patientId} by caretaker ${caretakerId}`, { module: 'VITALS' });
+    logger.info(`VitalRecord ${vitalRecord._id} created for patient ${patientId}`, { module: 'VITALS' });
 
     let mlResult;
     try {
       mlResult = await callMLService({
-        heart_rate: heartRate, spo2, systolic_bp: systolicBP,
-        diastolic_bp: diastolicBP, temperature,
-        fall_detection: fallDetection ? 'Yes' : 'No',
+        age, heart_rate: heartRate, systolic_bp: systolicBP,
+        diastolic_bp: diastolicBP, spo2, glucose_level: glucoseLevel,
+        temperature, cholesterol, bmi,
       });
     } catch (mlErr) {
       logger.error(`ML service error: ${mlErr.message}`, { module: 'VITALS' });
@@ -64,19 +71,29 @@ exports.submitVitals = async (req, res, next) => {
       });
     }
 
+    const predictedDisease = mlResult.predicted_disease || 'Unknown';
+
+    const a = mlResult.alerts || {};
+    const toHighLowNormal  = (v) => ['High','Low','Normal'].includes(v)  ? v : (v ? 'High' : 'Normal');
+    const toHighNormal     = (v) => ['High','Normal'].includes(v)        ? v : (v ? 'High' : 'Normal');
+    const toLowNormal      = (v) => ['Low','Normal'].includes(v)         ? v : (v ? 'Low'  : 'Normal');
+    const toBmiEnum        = (v) => ['Normal','Obese','Underweight'].includes(v) ? v : 'Normal';
+
     const prediction = await Prediction.create({
       patientId,
-      vitalRecordId: vitalRecord._id,
-      predictedDisease:   mlResult.predicted_disease,
+      vitalRecordId:      vitalRecord._id,
       riskLevel:          mlResult.risk_level,
       confidence:         mlResult.confidence,
       confidenceLabel:    mlResult.confidence_label,
       classProbabilities: new Map(Object.entries(mlResult.class_probabilities || {})),
       alerts: {
-        heartRate:     mlResult.alerts?.heart_rate     || 'Normal',
-        spo2:          mlResult.alerts?.spo2           || 'Normal',
-        bloodPressure: mlResult.alerts?.blood_pressure || 'Normal',
-        temperature:   mlResult.alerts?.temperature    || 'Normal',
+        heartRate:     toHighLowNormal(a.heart_rate),
+        spo2:          toLowNormal(a.spo2),
+        bloodPressure: toHighNormal(a.blood_pressure),
+        temperature:   toHighLowNormal(a.temperature),
+        glucose:       toHighLowNormal(a.glucose),
+        cholesterol:   toHighNormal(a.cholesterol),
+        bmi:           toBmiEnum(a.bmi),
       },
       shapValues: new Map(Object.entries(mlResult.shap_values || {})),
       modelUsed:  mlResult.model_used || 'random_forest',
@@ -88,30 +105,30 @@ exports.submitVitals = async (req, res, next) => {
       patientId,
       doctorId:         patient.assignedDoctorId,
       predictionId:     prediction._id,
-      predictedDisease: mlResult.predicted_disease,
       riskLevel:        mlResult.risk_level,
+      predictedDisease,
     });
 
     let alertTriggered = false;
     if (mlResult.risk_level === 'High') {
       await dispatchAlert({
         patientId,
-        predictionId: prediction._id,
-        riskLevel:    mlResult.risk_level,
-        prediction:   { predictedDisease: mlResult.predicted_disease, confidence: mlResult.confidence },
-        vitals:       { heartRate, spo2, systolicBP, diastolicBP, temperature, fallDetection },
+        predictionId:     prediction._id,
+        riskLevel:        mlResult.risk_level,
+        predictedDisease,
+        prediction:       { confidence: mlResult.confidence },
+        vitals:           { age, heartRate, systolicBP, diastolicBP, spo2, glucoseLevel, temperature, cholesterol, bmi },
       });
       alertTriggered = true;
     }
 
     if (global.io) {
       global.io.to(patient.assignedDoctorId?.toString()).emit('new_prediction', {
-        patientId, predictedDisease: mlResult.predicted_disease,
-        riskLevel: mlResult.risk_level, alertTriggered,
+        patientId, riskLevel: mlResult.risk_level, alertTriggered,
       });
       global.io.to(caretakerId).emit('vitals_processed', {
         patientId, riskLevel: mlResult.risk_level, alertTriggered,
-        message: `Vitals processed: ${mlResult.predicted_disease} (${mlResult.risk_level} risk)`,
+        message: `Vitals processed: ${mlResult.risk_level} risk`,
       });
     }
 
@@ -119,16 +136,16 @@ exports.submitVitals = async (req, res, next) => {
       success: true,
       vitalRecord,
       prediction: {
-        id: prediction._id,
-        predictedDisease:   mlResult.predicted_disease,
+        id:                 prediction._id,
         riskLevel:          mlResult.risk_level,
+        predictedDisease,
         confidence:         mlResult.confidence,
         confidenceLabel:    mlResult.confidence_label,
         classProbabilities: mlResult.class_probabilities,
         alerts:             mlResult.alerts,
         shapValues:         mlResult.shap_values,
       },
-      carePlan: { id: carePlan._id, status: carePlan.status, predictedDisease: carePlan.predictedDisease, riskLevel: carePlan.riskLevel },
+      carePlan: { id: carePlan._id, status: carePlan.status, riskLevel: carePlan.riskLevel },
       alertTriggered,
     });
   } catch (err) { next(err); }

@@ -4,10 +4,10 @@ const alertSchema = new mongoose.Schema({
   patientId:         { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', required: true },
   predictionId:      { type: mongoose.Schema.Types.ObjectId, ref: 'Prediction' },
   vitalSnapshot: {
-    heartRate: Number, spo2: Number, systolicBP: Number,
-    diastolicBP: Number, temperature: Number, fallDetection: Boolean,
+    age: Number, heartRate: Number, systolicBP: Number, diastolicBP: Number,
+    spo2: Number, glucoseLevel: Number, temperature: Number,
+    cholesterol: Number, bmi: Number,
   },
-  predictedDisease:  String,
   riskLevel:         String,
   alertType:         { type: String, enum: ['Critical', 'Warning', 'Info'], default: 'Critical' },
   message:           { type: String, required: true },

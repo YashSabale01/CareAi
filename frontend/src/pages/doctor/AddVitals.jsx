@@ -2,31 +2,48 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../api/axiosInstance';
 import { getPatients } from '../../api/patient.api';
-import PredictionCard from '../../components/prediction/PredictionCard';
-import { VITAL_RANGES, DISCLAIMER } from '../../utils/constants';
+import { VITAL_RANGES, VITAL_NORMAL, DISCLAIMER } from '../../utils/constants';
 import toast from 'react-hot-toast';
 
 const FIELDS = [
-  { key: 'heartRate', label: 'Heart Rate (bpm)', type: 'number', ...VITAL_RANGES.heartRate },
-  { key: 'spo2', label: 'SpO2 (%)', type: 'number', ...VITAL_RANGES.spo2 },
-  { key: 'systolicBP', label: 'Systolic BP (mmHg)', type: 'number', ...VITAL_RANGES.systolicBP },
-  { key: 'diastolicBP', label: 'Diastolic BP (mmHg)', type: 'number', ...VITAL_RANGES.diastolicBP },
-  { key: 'temperature', label: 'Temperature (°C)', type: 'number', step: '0.1', ...VITAL_RANGES.temperature },
+  { key: 'age',          label: 'Age (years)',          step: '1'   },
+  { key: 'heartRate',    label: 'Heart Rate (bpm)',      step: '1'   },
+  { key: 'systolicBP',   label: 'Systolic BP (mmHg)',    step: '1'   },
+  { key: 'diastolicBP',  label: 'Diastolic BP (mmHg)',   step: '1'   },
+  { key: 'spo2',         label: 'SpO2 (%)',              step: '0.1' },
+  { key: 'glucoseLevel', label: 'Glucose Level (mg/dL)', step: '1'   },
+  { key: 'temperature',  label: 'Temperature (°F)',      step: '0.1' },
+  { key: 'cholesterol',  label: 'Cholesterol (mg/dL)',   step: '1'   },
+  { key: 'bmi',          label: 'BMI (kg/m²)',           step: '0.1' },
 ];
 
+const RISK_COLORS = { High: '#ef4444', Medium: '#f59e0b', Low: '#22c55e' };
+
+const ALERT_LABELS = {
+  heart_rate: 'Heart Rate', spo2: 'SpO2', blood_pressure: 'Blood Pressure',
+  temperature: 'Temperature', glucose: 'Glucose', cholesterol: 'Cholesterol', bmi: 'BMI',
+};
+
+const INIT_FORM = {
+  patientId: '', age: '', heartRate: '', systolicBP: '', diastolicBP: '',
+  spo2: '', glucoseLevel: '', temperature: '', cholesterol: '', bmi: '', notes: '',
+};
+
+function getWarning(key, val) {
+  const r = VITAL_RANGES[key];
+  if (!r || !val) return null;
+  const v = parseFloat(val);
+  if (v < r.min || v > r.max) return `Out of range (${r.min}–${r.max} ${r.unit})`;
+  const n = VITAL_NORMAL[key];
+  if (n && (v < n[0] || v > n[1])) return `Outside normal (${n[0]}–${n[1]} ${r.unit})`;
+  return null;
+}
+
 export default function AddVitals() {
-  const [form, setForm] = useState({ patientId: '', heartRate: '', spo2: '', systolicBP: '', diastolicBP: '', temperature: '', fallDetection: false, notes: '' });
+  const [form, setForm] = useState(INIT_FORM);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const { data: patientsData } = useQuery({ queryKey: ['patients'], queryFn: () => getPatients().then(r => r.data) });
-
-  const getWarning = (key, val) => {
-    const r = VITAL_RANGES[key];
-    if (!r || !val) return null;
-    const v = parseFloat(val);
-    if (v < r.min || v > r.max) return `Out of range (${r.min}–${r.max} ${r.unit})`;
-    return null;
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -34,10 +51,21 @@ export default function AddVitals() {
     setLoading(true);
     setResult(null);
     try {
-      const payload = { ...form, heartRate: +form.heartRate, spo2: +form.spo2, systolicBP: +form.systolicBP, diastolicBP: +form.diastolicBP, temperature: +form.temperature };
+      const payload = {
+        ...form,
+        age:          +form.age,
+        heartRate:    +form.heartRate,
+        systolicBP:   +form.systolicBP,
+        diastolicBP:  +form.diastolicBP,
+        spo2:         +form.spo2,
+        glucoseLevel: +form.glucoseLevel,
+        temperature:  +form.temperature,
+        cholesterol:  +form.cholesterol,
+        bmi:          +form.bmi,
+      };
       const { data } = await api.post('/api/predictions/predict', payload);
       setResult(data);
-      toast.success('Prediction complete!');
+      toast.success('Risk assessment complete!');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Prediction failed');
     } finally { setLoading(false); }
@@ -45,7 +73,7 @@ export default function AddVitals() {
 
   return (
     <div className="flex flex-col gap-6 max-w-4xl">
-      <h1 className="text-2xl font-bold text-[#f1f5f9]">Add Vitals & Get Prediction</h1>
+      <h1 className="text-2xl font-bold text-[#f1f5f9]">Add Vitals & Get Risk Assessment</h1>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <form onSubmit={handleSubmit} className="card flex flex-col gap-4">
@@ -57,12 +85,13 @@ export default function AddVitals() {
             </select>
           </div>
 
-          {FIELDS.map(({ key, label, type, step, min, max, unit }) => {
+          {FIELDS.map(({ key, label, step }) => {
+            const { min, max, unit } = VITAL_RANGES[key];
             const warn = getWarning(key, form[key]);
             return (
               <div key={key}>
                 <label className="text-sm text-[#94a3b8] block mb-1">{label}</label>
-                <input type={type} step={step || '1'} value={form[key]}
+                <input type="number" step={step} value={form[key]}
                   onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
                   className={`input-field ${warn ? 'border-[#f59e0b]' : ''}`}
                   placeholder={`${min}–${max} ${unit}`} required />
@@ -71,11 +100,6 @@ export default function AddVitals() {
             );
           })}
 
-          <label className="flex items-center gap-2 text-sm text-[#94a3b8] cursor-pointer">
-            <input type="checkbox" checked={form.fallDetection} onChange={e => setForm(f => ({ ...f, fallDetection: e.target.checked }))} className="w-4 h-4" />
-            Fall Detection
-          </label>
-
           <div>
             <label className="text-sm text-[#94a3b8] block mb-1">Notes (optional)</label>
             <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
@@ -83,7 +107,7 @@ export default function AddVitals() {
           </div>
 
           <button type="submit" disabled={loading} className="btn-primary py-2.5">
-            {loading ? '🤖 Analyzing...' : '🤖 Predict Disease'}
+            {loading ? '🤖 Analyzing...' : '🤖 Assess Clinical Risk'}
           </button>
           <p className="text-xs text-[#94a3b8] italic">{DISCLAIMER}</p>
         </form>
@@ -91,26 +115,52 @@ export default function AddVitals() {
         <div>
           {result ? (
             <div className="flex flex-col gap-4">
-              <PredictionCard prediction={{ ...result.prediction, ...result.mlResult, classProbabilities: result.mlResult?.class_probabilities, shapValues: result.mlResult?.shap_values, modelUsed: result.mlResult?.model_used }} />
+              <div className="card flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-[#94a3b8]">CLINICAL RISK LEVEL</p>
+                    <p className="text-3xl font-bold" style={{ color: RISK_COLORS[result.risk_level] }}>{result.risk_level}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-[#94a3b8]">CONFIDENCE</p>
+                    <p className="text-2xl font-bold text-[#f1f5f9]">{Math.round((result.confidence || 0) * 100)}%</p>
+                    <p className="text-xs text-[#94a3b8]">{result.confidence_label}</p>
+                  </div>
+                </div>
+
+                <div className="h-2 rounded-full bg-[#2d3748]">
+                  <div className="h-2 rounded-full" style={{ width: `${Math.round((result.confidence || 0) * 100)}%`, background: RISK_COLORS[result.risk_level] }} />
+                </div>
+
+                {result.alerts && (
+                  <div className="grid grid-cols-4 gap-2">
+                    {Object.entries(ALERT_LABELS).map(([key, label]) => {
+                      const val = result.alerts[key] || 'Normal';
+                      const isNormal = val === 'Normal';
+                      return (
+                        <div key={key} className={`p-2 rounded text-center text-xs ${!isNormal ? 'bg-[#ef444422] text-[#ef4444]' : 'bg-[#22c55e22] text-[#22c55e]'}`}>
+                          <p className="font-semibold">{val}</p>
+                          <p className="text-[10px] mt-0.5 opacity-70">{label}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <p className="text-xs text-[#94a3b8] italic border-t border-[#2d3748] pt-3">{DISCLAIMER}</p>
+              </div>
+
               {result.alertTriggered && (
                 <div className="card border-[#ef4444] border">
                   <p className="text-sm font-semibold text-[#ef4444]">🚨 Alert Dispatched</p>
                   <p className="text-xs text-[#94a3b8] mt-1">Doctor and caretaker have been notified.</p>
                 </div>
               )}
-              {result.carePlan && (
-                <div className="card">
-                  <p className="text-sm font-semibold text-[#f1f5f9] mb-2">📋 Generated Care Plan</p>
-                  <p className="text-xs text-[#94a3b8]">Follow-up: {result.carePlan.followUpSchedule}</p>
-                  <p className="text-xs text-[#94a3b8] mt-1">Dietary: {result.carePlan.dietaryGuidelines?.slice(0, 2).join(', ')}...</p>
-                  <p className="text-xs text-[#94a3b8] italic mt-2">{DISCLAIMER}</p>
-                </div>
-              )}
             </div>
           ) : (
             <div className="card flex flex-col items-center justify-center h-64 text-center">
               <div className="text-5xl mb-4">🤖</div>
-              <p className="text-[#94a3b8]">Fill in vitals and submit to get AI prediction</p>
+              <p className="text-[#94a3b8]">Fill in vitals and submit to get AI risk assessment</p>
             </div>
           )}
         </div>

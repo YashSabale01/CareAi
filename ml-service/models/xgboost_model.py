@@ -13,7 +13,7 @@ def build_xgboost(X_train, y_train, param_grid=None):
         }
     base = xgb.XGBClassifier(
         objective='multi:softprob',
-        num_class=5,
+        num_class=3,
         random_state=42,
         eval_metric='mlogloss',
         n_jobs=-1,

@@ -10,8 +10,7 @@ const dispatchAlert = async ({ patientId, predictionId, riskLevel, prediction, v
     const patientUser = patient?.userId;
 
     const alertType = riskLevel === 'High' ? 'Critical' : 'Warning';
-    const diseaseLabel = prediction.predictedDisease === 'Normal' ? 'No specific condition' : prediction.predictedDisease;
-    const message = `${alertType} alert: ${diseaseLabel} detected with ${riskLevel} risk. ` +
+    const message = `${alertType} alert: ${riskLevel} clinical risk detected. ` +
       `Confidence: ${(prediction.confidence * 100).toFixed(1)}%`;
 
     const alert = await Alert.create({
@@ -27,7 +26,7 @@ const dispatchAlert = async ({ patientId, predictionId, riskLevel, prediction, v
 
     // Emit Socket.IO in-app notification
     if (global.io) {
-      const payload = { alert, patientName: patientUser?.name, riskLevel, disease: prediction.predictedDisease };
+      const payload = { alert, patientName: patientUser?.name, riskLevel };
       if (patient?.assignedDoctorId)    global.io.to(patient.assignedDoctorId.toString()).emit('new_alert', payload);
       if (patient?.assignedCaretakerId) global.io.to(patient.assignedCaretakerId.toString()).emit('new_alert', payload);
       await Alert.findByIdAndUpdate(alert._id, { 'notificationsSent.inApp': true });
@@ -50,7 +49,6 @@ const dispatchAlert = async ({ patientId, predictionId, riskLevel, prediction, v
         patientId: patient?.patientId || patientId,
         age: patient?.age,
         vitals,
-        disease: prediction.predictedDisease,
         riskLevel,
         timestamp: new Date(),
       };
