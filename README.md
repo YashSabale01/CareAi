@@ -244,16 +244,7 @@ cd ml-service && pytest tests/ -v
 
 ---
 
-## Team
 
-| Name | Role |
-|------|------|
-| Yash Sabale | Project Lead & Backend |
-| Arya Gandewar | ML Engineering |
-| Laxman Adhikari | Frontend Development |
-| Sanika Karande | Data Engineering |
-| Om Kadam | DevOps & Docker |
-| Abhay Maurya | QA & Testing |
 
 ---
 
